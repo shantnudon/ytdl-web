@@ -68,3 +68,29 @@ def test_playlist_and_archive_opts(tmp_path: Path):
 
     single = build_opts({"allow_playlist": False}, download_dir=tmp_path)
     assert single["noplaylist"] is True
+
+
+def test_force_bypasses_archive_and_allows_overwrite(tmp_path: Path):
+    opts = build_opts(
+        {"force": True, "archive": True},
+        download_dir=tmp_path,
+        archive_path=tmp_path / "archive.txt",
+    )
+    assert "download_archive" not in opts
+    assert opts["overwrites"] is True
+
+
+def test_archive_used_when_not_forced(tmp_path: Path):
+    opts = build_opts(
+        {"archive": True},
+        download_dir=tmp_path,
+        archive_path=tmp_path / "archive.txt",
+    )
+    assert opts["download_archive"].endswith("archive.txt")
+    assert opts["overwrites"] is False
+
+
+def test_bool_coercion():
+    assert normalize_preset({"force": "true"})["force"] is True
+    assert normalize_preset({"force": "false"})["force"] is False
+    assert normalize_preset({"archive": 0})["archive"] is False

@@ -1,8 +1,9 @@
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, payload) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.payload = payload
   }
 }
 
@@ -13,6 +14,12 @@ function parse(text) {
   } catch {
     return { detail: text }
   }
+}
+
+function messageFrom(detail, fallback) {
+  if (Array.isArray(detail)) return detail.map((item) => item.msg || item).join(', ')
+  if (detail && typeof detail === 'object') return detail.message || JSON.stringify(detail)
+  return detail || fallback || 'request failed'
 }
 
 /**
@@ -33,7 +40,7 @@ export async function api(path, { method = 'GET', body, form, headers = {} } = {
   try {
     response = await fetch(`/api${path}`, options)
   } catch (error) {
-    throw new ApiError(`network error: ${error.message}`, 0)
+    throw new ApiError(`network error: ${error.message}`, 0, null)
   }
 
   const payload = parse(await response.text())
@@ -43,11 +50,7 @@ export async function api(path, { method = 'GET', body, form, headers = {} } = {
   }
 
   if (!response.ok) {
-    const detail = payload?.detail
-    const message = Array.isArray(detail)
-      ? detail.map((item) => item.msg || item).join(', ')
-      : detail || response.statusText || 'request failed'
-    throw new ApiError(message, response.status)
+    throw new ApiError(messageFrom(payload?.detail, response.statusText), response.status, payload)
   }
 
   return payload

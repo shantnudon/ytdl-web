@@ -130,3 +130,58 @@ async def test_write_guard(tmp_path):
             "/api/library/rename/apply", json={"ids": ["x"], "template": "{title}"}
         )
         assert response.status_code == 403
+
+
+async def test_duplicate_url_requires_force(client, app):
+    created = await client.post("/api/jobs", json={"url": "https://example.com/v/dup"})
+    job = created.json()
+    app.state.db.update_job(job["id"], status="done", outpath="/downloads/x.mp3", title="X")
+
+    again = await client.post("/api/jobs", json={"url": "https://example.com/v/dup"})
+    assert again.status_code == 409
+    detail = again.json()["detail"]
+    assert detail["existing"]["id"] == job["id"]
+    assert "force" in detail["message"]
+
+    forced = await client.post(
+        "/api/jobs", json={"url": "https://example.com/v/dup", "preset": {"force": True}}
+    )
+    assert forced.status_code == 201
+
+
+async def test_retry_sets_force(client, app):
+    created = await client.post("/api/jobs", json={"url": "https://example.com/v/retry"})
+    job = created.json()
+    app.state.db.update_job(job["id"], status="done")
+
+    retried = await client.post(f"/api/jobs/{job['id']}/retry")
+    assert retried.status_code == 200
+    assert retried.json()["preset"]["force"] is True
+
+
+async def test_prefs_roundtrip(client):
+    initial = await client.get("/api/prefs")
+    assert initial.status_code == 200
+    assert initial.json()["default_preset"]["mode"] == "video"
+
+    saved = await client.put(
+        "/api/prefs",
+        json={
+            "default_preset": {"mode": "audio", "audio_format": "opus", "quality": "720"},
+            "default_template": "{artist}/{title}",
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["default_preset"]["mode"] == "audio"
+    assert saved.json()["default_preset"]["audio_format"] == "opus"
+
+    reread = await client.get("/api/prefs")
+    assert reread.json()["default_preset"]["audio_format"] == "opus"
+    assert reread.json()["default_template"] == "{artist}/{title}"
+
+
+async def test_prefs_rejects_bad_template(client):
+    response = await client.put(
+        "/api/prefs", json={"default_preset": {}, "default_template": "{nope}"}
+    )
+    assert response.status_code == 400

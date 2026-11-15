@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from './lib/api.js'
+  import { loadPrefs } from './lib/prefs.svelte.js'
+  import { applyDefaults } from './lib/draft.svelte.js'
   import SubmitForm from './components/SubmitForm.svelte'
   import JobList from './components/JobList.svelte'
   import Library from './components/Library.svelte'
@@ -13,6 +15,8 @@
   let authRequired = $state(false)
   let authenticated = $state(true)
   let ready = $state(false)
+  let connected = $state(false)
+  let streamError = $state(false)
   let toast = $state('')
   let toastTimer
 
@@ -21,7 +25,14 @@
       const status = await api('/auth/status')
       authRequired = status.auth_required
       authenticated = status.authenticated
-      if (status.authenticated) await refresh()
+      if (!status.authenticated) return
+      try {
+        const data = await loadPrefs()
+        applyDefaults(data.default_preset)
+      } catch {
+        /* defaults are optional */
+      }
+      await refresh()
     } catch (error) {
       notify(`Startup failed: ${error.message}`)
     } finally {
@@ -58,13 +69,27 @@
 
   onMount(() => {
     bootstrap()
-
     const onUnauthorized = () => {
       authenticated = false
+      connected = false
     }
     window.addEventListener('ytdlweb:unauthorized', onUnauthorized)
+    return () => {
+      window.removeEventListener('ytdlweb:unauthorized', onUnauthorized)
+      clearTimeout(toastTimer)
+    }
+  })
 
+  // Only open the stream once we are authenticated: an EventSource that gets a
+  // 401 at page load does not retry, which is why the queue looked frozen until
+  // a reload. Tying it to `authenticated` re-creates it after login.
+  $effect(() => {
+    if (!ready || !authenticated) return
     const source = new EventSource('/api/events')
+    source.onopen = () => {
+      connected = true
+      streamError = false
+    }
     source.onmessage = (event) => {
       let payload
       try {
@@ -77,12 +102,18 @@
         notify(`Library: ${payload.data.added} added, ${payload.data.updated} updated`)
       }
     }
-
-    return () => {
-      window.removeEventListener('ytdlweb:unauthorized', onUnauthorized)
-      source.close()
-      clearTimeout(toastTimer)
+    source.onerror = () => {
+      connected = false
+      streamError = true
     }
+    return () => source.close()
+  })
+
+  // Safety net for buffering proxies or a dropped stream.
+  $effect(() => {
+    if (!ready || !authenticated || connected) return
+    const timer = setInterval(refresh, 5000)
+    return () => clearInterval(timer)
   })
 </script>
 
@@ -96,6 +127,11 @@
       <div class="brand">ytdl<span>web</span></div>
       {#if system?.ytdlp}
         <span class="badge">yt-dlp {system.ytdlp}</span>
+      {/if}
+      {#if streamError}
+        <span class="badge interrupted" title="Live updates paused, falling back to polling">
+          reconnecting
+        </span>
       {/if}
       <nav class="tabs">
         <button class:active={tab === 'download'} onclick={() => (tab = 'download')}>Download</button>

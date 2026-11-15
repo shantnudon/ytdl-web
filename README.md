@@ -23,6 +23,9 @@ image, a Python package, or a single-file binary.
 - Playlists: probe first, pick a range (`1-5,8`), then download
 - Live progress over SSE: percent, speed, ETA, cancel/retry per job
 - Crash-safe queue: jobs survive a restart and resume from `.part` files
+- Metadata is fetched as you paste a URL, so jobs show real titles immediately
+- Re-download a URL in a different format (the archive is bypassed after a confirm)
+- Download defaults (preset, rename template) are stored server-side
 - Embed metadata, cover art, subtitles, chapters; SponsorBlock mark/remove
 - `cookies.txt` upload for age-restricted or member-only content
 - Download archive: re-running a URL never re-downloads the same video

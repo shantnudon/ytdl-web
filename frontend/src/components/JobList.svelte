@@ -50,7 +50,11 @@
           <tr>
             <td>
               <div>{job.title || job.url}</div>
-              <div class="muted small mono">{shortPath(job.outpath) || job.url}</div>
+              {#if job.outpath}
+                <div class="muted small mono">{shortPath(job.outpath)}</div>
+              {:else if job.title}
+                <div class="muted small mono">{job.url}</div>
+              {/if}
               {#if job.error}
                 <div class="notice error small">{job.error}</div>
               {/if}

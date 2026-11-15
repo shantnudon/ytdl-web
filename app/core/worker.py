@@ -94,6 +94,7 @@ class DownloadManager:
         self._cancels: dict[str, threading.Event] = {}
         self._last_push: dict[str, float] = {}
         self._logs: dict[str, list[str]] = {}
+        self._titled: set[str] = set()
 
     # -- lifecycle ----------------------------------------------------------
     async def start(self) -> None:
@@ -193,6 +194,7 @@ class DownloadManager:
         finally:
             self._cancels.pop(job_id, None)
             self._last_push.pop(job_id, None)
+            self._titled.discard(job_id)
             self._flush_log(job_id)
             self._emit(job_id)
 
@@ -227,6 +229,16 @@ class DownloadManager:
         def hook(data: dict) -> None:
             if cancel.is_set():
                 raise DownloadCancelled("canceled by user")
+
+            # yt-dlp knows the real title long before the file is finished; show
+            # it in the queue instead of the raw URL.
+            info = data.get("info_dict") or {}
+            title = info.get("playlist_title") or info.get("title")
+            if title and job_id not in self._titled:
+                self._titled.add(job_id)
+                self.db.update_job(job_id, title=str(title)[:300])
+                self._emit(job_id)
+
             status = data.get("status")
             if status == "downloading":
                 total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0

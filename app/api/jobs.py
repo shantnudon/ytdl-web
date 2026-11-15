@@ -64,7 +64,28 @@ def job_dict(job: dict[str, Any] | None) -> dict[str, Any] | None:
 async def create_job(payload: JobIn, db: Db, manager: Manager) -> dict[str, Any]:
     job_id = uuid.uuid4().hex[:12]
     preset = normalize_preset(payload.preset)
-    db.add_job(job_id, _clean_url(payload.url), preset, title=payload.title)
+    url = _clean_url(payload.url)
+
+    existing = db.one(
+        "SELECT id, title, outpath, finished_at FROM jobs "
+        "WHERE url = ? AND status = 'done' ORDER BY finished_at DESC LIMIT 1",
+        (url,),
+    )
+    if existing and not preset["force"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "this URL was already downloaded; send force=true to fetch it again",
+                "existing": {
+                    "id": existing["id"],
+                    "title": existing["title"],
+                    "outpath": existing["outpath"],
+                    "finished_at": existing["finished_at"],
+                },
+            },
+        )
+
+    db.add_job(job_id, url, preset, title=payload.title)
     await manager.enqueue(job_id)
     return job_dict(db.get_job(job_id)) or {}
 
@@ -103,6 +124,11 @@ async def retry_job(job_id: str, db: Db, manager: Manager) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="job not found")
     if manager.is_running(job_id):
         raise HTTPException(status_code=409, detail="job is still running")
+    try:
+        preset = json.loads(job["preset"] or "{}")
+    except json.JSONDecodeError:
+        preset = {}
+    preset["force"] = True
     db.update_job(
         job_id,
         status="queued",
@@ -112,6 +138,7 @@ async def retry_job(job_id: str, db: Db, manager: Manager) -> dict[str, Any]:
         error=None,
         started_at=None,
         finished_at=None,
+        preset=json.dumps(preset),
     )
     manager.emit_job(job_id)
     await manager.enqueue(job_id)

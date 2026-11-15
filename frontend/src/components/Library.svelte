@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { fmtDuration } from '../lib/format.js'
+  import { prefs, loadPrefs } from '../lib/prefs.svelte.js'
 
   let { notify, allowWrite = false } = $props()
 
@@ -30,12 +31,14 @@
   }
 
   onMount(async () => {
-    try {
-      const prefs = await api('/prefs')
-      template = prefs.default_template
-    } catch {
-      /* prefs are optional */
+    if (!prefs.loaded) {
+      try {
+        await loadPrefs()
+      } catch {
+        /* prefs are optional */
+      }
     }
+    if (prefs.default_template) template = prefs.default_template
     await load()
   })
 

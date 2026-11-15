@@ -1,75 +1,81 @@
 <script>
   import { api } from '../lib/api.js'
   import { fmtDuration } from '../lib/format.js'
+  import { draft, persistDraft, presetFromDraft } from '../lib/draft.svelte.js'
 
   let { notify, onQueued } = $props()
 
-  let url = $state('')
-  let mode = $state('video')
-  let quality = $state('best')
-  let audioFormat = $state('mp3')
-  let audioQuality = $state('0')
-  let playlistItems = $state('')
-  let outtmpl = $state('%(title)s [%(id)s].%(ext)s')
-  let embedThumb = $state(true)
-  let embedMeta = $state(true)
-  let subtitles = $state(false)
-  let archive = $state(true)
-  let sponsorblock = $state('off')
-  let rateLimit = $state('')
-  let advanced = $state(false)
   let info = $state(null)
   let busy = $state(false)
+  let probing = $state(false)
   let error = $state('')
+  let advanced = $state(false)
+  let duplicate = $state(null)
+  let probedFor = ''
 
-  let urls = $derived(url.split(/\s+/).filter((value) => value.length > 1))
+  let urls = $derived(draft.url.split(/\s+/).filter((value) => value.length > 1))
 
-  function preset() {
-    return {
-      mode,
-      quality,
-      audio_format: audioFormat,
-      audio_quality: audioQuality,
-      playlist_items: playlistItems,
-      outtmpl,
-      embed_thumbnail: embedThumb,
-      embed_metadata: embedMeta,
-      subtitles,
-      embed_subs: subtitles,
-      archive,
-      sponsorblock,
-      rate_limit: rateLimit,
+  $effect(() => {
+    persistDraft()
+  })
+
+  // Fetch metadata as soon as a single URL is typed/pasted, so the queue can
+  // show a real title even before the download starts.
+  $effect(() => {
+    const target = urls.length === 1 ? urls[0] : ''
+    if (!target) {
+      info = null
+      probedFor = ''
+      return
     }
-  }
+    if (target === probedFor) return
+    const timer = setTimeout(() => probe(target), 700)
+    return () => clearTimeout(timer)
+  })
 
-  async function probe() {
-    if (!urls.length) return
-    busy = true
-    error = ''
-    info = null
+  async function probe(target) {
+    if (!target) return
+    probing = true
     try {
-      info = await api('/probe', { method: 'POST', body: { url: urls[0] } })
+      info = await api('/probe', { method: 'POST', body: { url: target } })
+      probedFor = target
     } catch (problem) {
+      info = null
       error = problem.message
     } finally {
-      busy = false
+      probing = false
     }
   }
 
-  async function download() {
+  async function download(force = false) {
     if (!urls.length) return
     busy = true
     error = ''
+    duplicate = null
     let queued = 0
+
     try {
       for (const target of urls) {
-        const job = await api('/jobs', { method: 'POST', body: { url: target, preset: preset() } })
-        onQueued?.(job)
-        queued += 1
+        const body = { url: target, preset: presetFromDraft(force ? { force: true } : {}) }
+        if (urls.length === 1 && info?.title) body.title = info.title
+        try {
+          const job = await api('/jobs', { method: 'POST', body })
+          onQueued?.(job)
+          queued += 1
+        } catch (problem) {
+          if (problem.status === 409) {
+            duplicate = { url: target, existing: problem.payload?.detail?.existing || null }
+            break
+          }
+          throw problem
+        }
       }
-      notify?.(`Queued ${queued} job${queued === 1 ? '' : 's'}`)
-      url = ''
-      info = null
+      if (queued > 0) {
+        notify?.(`Queued ${queued} job${queued === 1 ? '' : 's'}`)
+        draft.url = ''
+        info = null
+        probedFor = ''
+      }
     } catch (problem) {
       error = problem.message
     } finally {
@@ -80,26 +86,26 @@
 
 <div class="panel">
   <h2>New download</h2>
-  <p class="hint">One URL per line. Playlists are supported — probe first to inspect them.</p>
+  <p class="hint">One URL per line. Playlists are supported — metadata is fetched automatically.</p>
 
   <label class="field">
     <span>URLs</span>
-    <textarea rows="3" bind:value={url} placeholder="https://www.youtube.com/watch?v=…"></textarea>
+    <textarea rows="3" bind:value={draft.url} placeholder="https://www.youtube.com/watch?v=…"></textarea>
   </label>
 
   <div class="row">
     <label class="field grow">
       <span>Mode</span>
-      <select bind:value={mode}>
+      <select bind:value={draft.mode}>
         <option value="video">Video</option>
         <option value="audio">Audio only</option>
       </select>
     </label>
 
-    {#if mode === 'video'}
+    {#if draft.mode === 'video'}
       <label class="field grow">
         <span>Max resolution</span>
-        <select bind:value={quality}>
+        <select bind:value={draft.quality}>
           <option value="best">Best available</option>
           <option value="2160">2160p (4K)</option>
           <option value="1440">1440p</option>
@@ -112,7 +118,7 @@
     {:else}
       <label class="field grow">
         <span>Audio format</span>
-        <select bind:value={audioFormat}>
+        <select bind:value={draft.audioFormat}>
           <option value="mp3">MP3</option>
           <option value="m4a">M4A</option>
           <option value="opus">Opus</option>
@@ -121,7 +127,7 @@
       </label>
       <label class="field grow">
         <span>Quality</span>
-        <select bind:value={audioQuality}>
+        <select bind:value={draft.audioQuality}>
           <option value="0">Best (VBR)</option>
           <option value="320">320 kbps</option>
           <option value="256">256 kbps</option>
@@ -133,13 +139,13 @@
   </div>
 
   <div class="checks">
-    <label><input type="checkbox" bind:checked={embedMeta} /> Embed metadata</label>
-    <label><input type="checkbox" bind:checked={embedThumb} /> Embed thumbnail</label>
-    <label><input type="checkbox" bind:checked={subtitles} /> Subtitles</label>
-    <label><input type="checkbox" bind:checked={archive} /> Skip already downloaded</label>
+    <label><input type="checkbox" bind:checked={draft.embedMeta} /> Embed metadata</label>
+    <label><input type="checkbox" bind:checked={draft.embedThumb} /> Embed thumbnail</label>
+    <label><input type="checkbox" bind:checked={draft.subtitles} /> Subtitles</label>
+    <label><input type="checkbox" bind:checked={draft.archive} /> Skip already downloaded</label>
     <label>
       SponsorBlock
-      <select bind:value={sponsorblock} style="width:auto">
+      <select bind:value={draft.sponsorblock} style="width:auto">
         <option value="off">off</option>
         <option value="mark">mark</option>
         <option value="remove">remove</option>
@@ -155,25 +161,37 @@
     <div class="row" style="margin-top:12px">
       <label class="field grow">
         <span>Playlist items (e.g. 1-5,8)</span>
-        <input type="text" bind:value={playlistItems} placeholder="all" />
+        <input type="text" bind:value={draft.playlistItems} placeholder="all" />
       </label>
       <label class="field grow">
         <span>Filename template</span>
-        <input type="text" bind:value={outtmpl} />
+        <input type="text" bind:value={draft.outtmpl} />
       </label>
       <label class="field grow">
         <span>Rate limit (e.g. 5M)</span>
-        <input type="text" bind:value={rateLimit} placeholder="unlimited" />
+        <input type="text" bind:value={draft.rateLimit} placeholder="unlimited" />
       </label>
     </div>
   {/if}
 
   <div class="row" style="margin-top:6px">
-    <button class="primary" disabled={busy || !urls.length} onclick={download}>
+    <button class="primary" disabled={busy || !urls.length} onclick={() => download()}>
       {busy ? 'Working…' : `Download${urls.length > 1 ? ` (${urls.length})` : ''}`}
     </button>
-    <button class="ghost" disabled={busy || !urls.length} onclick={probe}>Probe metadata</button>
-    <span class="muted small">Yt-dlp handles the format selection; presets just cap resolution.</span>
+    <button
+      class="ghost"
+      disabled={busy || probing || urls.length !== 1}
+      onclick={() => probe(urls[0])}
+    >
+      {probing ? 'Fetching…' : 'Refresh metadata'}
+    </button>
+    <span class="muted small">
+      {#if probing}
+        Fetching metadata…
+      {:else}
+        Format choice is final once the job starts.
+      {/if}
+    </span>
   </div>
 
   {#if error}
@@ -208,3 +226,22 @@
     </div>
   {/if}
 </div>
+
+{#if duplicate}
+  <div class="overlay" role="presentation">
+    <div class="dialog">
+      <h3>Already downloaded</h3>
+      <p class="muted">
+        This URL has a finished download{#if duplicate.existing?.title}
+          — <strong>{duplicate.existing.title}</strong>{/if}. Downloading it again creates a
+        new file, which is what you want when switching format or quality.
+      </p>
+      <div class="actions">
+        <button class="ghost" onclick={() => (duplicate = null)}>Cancel</button>
+        <button class="primary" disabled={busy} onclick={() => download(true)}>
+          Download anyway
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}

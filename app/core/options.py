@@ -54,12 +54,19 @@ DEFAULT_PRESET: dict[str, Any] = {
     "sponsorblock": "off",
     "write_info_json": False,
     "archive": True,
+    "force": False,
     "rate_limit": "",
     "concurrent_fragments": 4,
 }
 
 _RATE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([kmg]?)i?b?$", re.IGNORECASE)
 _RATE_UNITS = {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3}
+
+
+def as_bool(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def parse_rate(value: str | int | None) -> int | None:
@@ -114,7 +121,8 @@ def normalize_preset(raw: dict[str, Any] | None) -> dict[str, Any]:
         preset["concurrent_fragments"] = 4
 
     preset["playlist_items"] = str(preset.get("playlist_items") or "").strip()[:200]
-    preset["subtitle_langs"] = preset["subtitle_langs"]
+    preset["force"] = as_bool(preset.get("force"))
+    preset["archive"] = as_bool(preset.get("archive"))
     return preset
 
 
@@ -220,8 +228,13 @@ def build_opts(
     if preset["write_info_json"]:
         opts["writeinfojson"] = True
 
-    if preset["archive"] and archive_path:
+    if preset["archive"] and archive_path and not preset["force"]:
         opts["download_archive"] = str(archive_path)
+
+    if preset["force"]:
+        # The user explicitly asked to fetch this again, often to change format.
+        # Skip the archive (done above) and allow replacing an existing file.
+        opts["overwrites"] = True
 
     if cookies_file and Path(cookies_file).is_file():
         opts["cookiefile"] = str(cookies_file)

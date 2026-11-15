@@ -1,25 +1,54 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
 from ..cli import update_extractors
-from ..core.options import DEFAULT_PRESET
-from ..deps import SettingsDep
-from ..library.rename import DEFAULT_TEMPLATE, TOKENS
+from ..core.options import DEFAULT_PRESET, normalize_preset
+from ..deps import Db, SettingsDep
+from ..library.rename import DEFAULT_TEMPLATE, TOKENS, TemplateError, build_target
 
 router = APIRouter(prefix="/api/prefs", tags=["prefs"])
 
 MAX_COOKIES_BYTES = 2 * 1024 * 1024
 
+_SAMPLE_TRACK = {
+    "artist": "Artist",
+    "albumartist": "Artist",
+    "album": "Album",
+    "title": "Title",
+    "track": "1",
+    "disc": "1",
+    "year": "2000",
+    "ext": "mp3",
+}
+
+
+class PrefsIn(BaseModel):
+    default_preset: dict[str, Any] = Field(default_factory=dict)
+    default_template: str = Field(default=DEFAULT_TEMPLATE, max_length=300)
+
+
+def _stored(db: Db) -> dict[str, Any]:
+    preset = dict(DEFAULT_PRESET)
+    raw = db.kv_get("default_preset")
+    if raw:
+        try:
+            preset = normalize_preset(json.loads(raw))
+        except json.JSONDecodeError:
+            preset = dict(DEFAULT_PRESET)
+    template = db.kv_get("default_template") or DEFAULT_TEMPLATE
+    return {"default_preset": preset, "default_template": template}
+
 
 @router.get("")
-def get_prefs(settings: SettingsDep) -> dict[str, Any]:
+def get_prefs(settings: SettingsDep, db: Db) -> dict[str, Any]:
     return {
-        "default_preset": DEFAULT_PRESET,
-        "default_template": DEFAULT_TEMPLATE,
+        **_stored(db),
         "template_tokens": list(TOKENS),
         "allow_write": settings.allow_write,
         "has_cookies": bool(settings.cookies_file and settings.cookies_file.is_file()),
@@ -27,7 +56,21 @@ def get_prefs(settings: SettingsDep) -> dict[str, Any]:
     }
 
 
-@router.post("/cookies", dependencies=[])
+@router.put("")
+def save_prefs(payload: PrefsIn, settings: SettingsDep, db: Db) -> dict[str, Any]:
+    preset = normalize_preset(payload.default_preset)
+    template = payload.default_template.strip() or DEFAULT_TEMPLATE
+    try:
+        build_target(template, _SAMPLE_TRACK)
+    except TemplateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    db.kv_set("default_preset", json.dumps(preset))
+    db.kv_set("default_template", template)
+    return get_prefs(settings, db)
+
+
+@router.post("/cookies")
 async def upload_cookies(file: UploadFile, settings: SettingsDep) -> dict[str, Any]:
     data = await file.read()
     if not data:

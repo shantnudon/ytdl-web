@@ -124,6 +124,7 @@ The UI sends a preset object; `app/core/options.py` validates it against
 | `embed_metadata`, `embed_thumbnail` | bool | |
 | `sponsorblock` | `off`, `mark`, `remove` | `remove` re-encodes through ffmpeg |
 | `archive` | bool | skips anything already in `$CONFIG/archive.txt` |
+| `force` | bool | ignore the archive and overwrite, so the same URL can be re-fetched in another format |
 | `rate_limit` | `500K`, `5M` | bytes per second |
 | `concurrent_fragments` | 1–16 | |
 
