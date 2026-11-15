@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  docker:
+    name: image (ghcr)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  binary:
+    name: binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artefact: ytdlweb-linux-x86_64
+          - os: macos-14
+            artefact: ytdlweb-macos-arm64
+          - os: windows-latest
+            artefact: ytdlweb-windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build UI
+        run: |
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+      - name: Install build deps
+        run: pip install -e ".[binary]" nuitka
+
+      # The frozen binary bundles yt-dlp and ffmpeg (via imageio-ffmpeg).
+      # It does NOT bundle a JS runtime: install deno or node on the target,
+      # or set JS_RUNTIME. See docs/ARCHITECTURE.md#javascript-runtime.
+      - name: Build onefile
+        shell: bash
+        run: |
+          python -m nuitka \
+            --onefile --standalone --assume-yes-for-downloads \
+            --include-package=app \
+            --include-package=yt_dlp --include-package-data=yt_dlp \
+            --include-package=imageio_ffmpeg \
+            --include-data-dir=app/static=app/static \
+            --output-filename=ytdlweb \
+            --output-dir=dist \
+            packaging/entry.py
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p release
+          if [ -f dist/ytdlweb.exe ]; then
+            cp dist/ytdlweb.exe "release/${{ matrix.artefact }}.exe"
+          else
+            cp dist/ytdlweb "release/${{ matrix.artefact }}"
+          fi
+          cd release && shasum -a 256 * > SHA256SUMS.txt || sha256sum * > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artefact }}
+          path: release/*
+
+  publish:
+    name: github release
+    needs: [binary]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          body: |
+            Docker is the recommended install:
+
+            ```
+            docker pull ghcr.io/${{ github.repository }}:latest
+            ```
+
+            Single-file binaries below. They bundle yt-dlp and ffmpeg but require
+            a JavaScript runtime (deno, node or bun) on the host for YouTube.
+            Extractors can be refreshed with `ytdlweb update-extractors`.

@@ -1,0 +1,26 @@
+services:
+  ytdlweb:
+    image: ghcr.io/OWNER/ytdlweb:latest
+    build: .
+    container_name: ytdlweb
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Leave empty for a trusted localhost-only setup; set a long random string
+      # whenever the port is reachable from another machine.
+      APP_TOKEN: ${APP_TOKEN:-}
+      ALLOW_WRITE: ${ALLOW_WRITE:-false}
+      MAX_CONCURRENT: ${MAX_CONCURRENT:-3}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      UMASK: ${UMASK:-002}
+    volumes:
+      # Runtime state: SQLite DB, cookies, extractor plugins, download archive.
+      - ./config:/config
+      # Finished downloads.
+      - ./downloads:/downloads
+      # Your music library. Mount read-only unless ALLOW_WRITE=true.
+      - ${MUSIC_DIR:-./music}:/music
+    stop_grace_period: 30s
