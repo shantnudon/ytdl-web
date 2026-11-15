@@ -3,11 +3,13 @@
   import { api } from '../lib/api.js'
   import { fmtDuration } from '../lib/format.js'
   import { prefs, loadPrefs } from '../lib/prefs.svelte.js'
+  import Skeleton from './Skeleton.svelte'
 
   let { notify, allowWrite = false } = $props()
 
   let items = $state([])
   let total = $state(0)
+  let loading = $state(true)
   let query = $state('')
   let scanning = $state(false)
   let busy = $state(false)
@@ -20,6 +22,7 @@
   let searchTimer
 
   async function load() {
+    loading = true
     try {
       const data = await api(`/library?q=${encodeURIComponent(query)}&limit=300`)
       items = data.items
@@ -27,6 +30,8 @@
       error = ''
     } catch (problem) {
       error = problem.message
+    } finally {
+      loading = false
     }
   }
 
@@ -255,7 +260,38 @@
 {/if}
 
 <div class="panel">
-  {#if items.length === 0}
+  {#if loading && items.length === 0}
+    <table aria-busy="true">
+      <thead>
+        <tr>
+          <th style="width:34px"></th>
+          <th>Title</th>
+          <th>Artist</th>
+          <th>Album</th>
+          <th style="width:64px">Time</th>
+          <th style="width:60px">Art</th>
+          <th style="width:70px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each [0, 1, 2, 3, 4] as row (row)}
+          <tr class="skeleton-row">
+            <td><Skeleton width="14px" height="14px" radius="3px" /></td>
+            <td>
+              <Skeleton width={`${55 + (row % 3) * 12}%`} height="13px" />
+              <div style="height:6px"></div>
+              <Skeleton width={`${30 + (row % 4) * 10}%`} height="10px" />
+            </td>
+            <td><Skeleton width="70%" height="12px" /></td>
+            <td><Skeleton width="60%" height="12px" /></td>
+            <td><Skeleton width="34px" height="12px" /></td>
+            <td><Skeleton width="18px" height="18px" radius="4px" /></td>
+            <td><Skeleton width="46px" height="24px" radius="6px" /></td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {:else if items.length === 0}
     <div class="empty">
       No tracks yet. Mount your music directory at the library path, then hit “Rescan library”.
     </div>

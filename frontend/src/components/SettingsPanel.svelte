@@ -1,6 +1,7 @@
 <script>
   import { api } from '../lib/api.js'
   import { prefs, savePrefs } from '../lib/prefs.svelte.js'
+  import Skeleton from './Skeleton.svelte'
 
   let { system = null, notify, onRefresh } = $props()
 
@@ -218,6 +219,15 @@
       </div>
       <div><div class="muted small">Library writes</div><div class="mono">{system.allow_write ? 'enabled' : 'disabled'}</div></div>
       <div><div class="muted small">Auth</div><div class="mono">{system.auth_required ? 'token required' : 'open (localhost)'}</div></div>
+    </div>
+  {:else}
+    <div class="grid-2" aria-busy="true">
+      {#each [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as row (row)}
+        <div class="skeleton-stack">
+          <Skeleton width="74px" height="11px" />
+          <Skeleton width={`${45 + (row % 4) * 12}%`} height="13px" />
+        </div>
+      {/each}
     </div>
   {/if}
 </div>

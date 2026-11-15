@@ -8,9 +8,11 @@
   import Library from './components/Library.svelte'
   import SettingsPanel from './components/SettingsPanel.svelte'
   import Login from './components/Login.svelte'
+  import Skeleton from './components/Skeleton.svelte'
 
   let tab = $state('download')
   let jobs = $state([])
+  let jobsLoaded = $state(false)
   let system = $state(null)
   let authRequired = $state(false)
   let authenticated = $state(true)
@@ -47,6 +49,8 @@
       system = info
     } catch (error) {
       notify(error.message)
+    } finally {
+      jobsLoaded = true
     }
   }
 
@@ -118,7 +122,30 @@
 </script>
 
 {#if !ready}
-  <div class="empty">loading…</div>
+  <div class="shell">
+    <header class="top">
+      <div class="brand">ytdl<span>web</span></div>
+      <Skeleton width="104px" height="22px" radius="999px" />
+      <nav class="tabs">
+        {#each ['a', 'b', 'c', 'd'] as key (key)}
+          <Skeleton width="86px" height="33px" radius="999px" />
+        {/each}
+      </nav>
+    </header>
+
+    <div class="panel">
+      <Skeleton width="120px" height="13px" />
+      <div style="height:10px"></div>
+      <Skeleton width="62%" height="12px" />
+      <div style="height:18px"></div>
+      <Skeleton height="84px" radius="10px" />
+      <div style="height:16px"></div>
+      <div class="row">
+        <Skeleton width="190px" height="38px" radius="8px" />
+        <Skeleton width="150px" height="38px" radius="8px" />
+      </div>
+    </div>
+  </div>
 {:else if authRequired && !authenticated}
   <Login onSuccess={onLogin} />
 {:else}
@@ -146,7 +173,7 @@
     {#if tab === 'download'}
       <SubmitForm {notify} onQueued={upsert} />
     {:else if tab === 'queue'}
-      <JobList {jobs} onChanged={refresh} {notify} />
+      <JobList {jobs} loading={!jobsLoaded} onChanged={refresh} {notify} />
     {:else if tab === 'library'}
       <Library {notify} allowWrite={system?.allow_write ?? false} />
     {:else}

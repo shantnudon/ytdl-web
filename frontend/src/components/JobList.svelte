@@ -1,8 +1,9 @@
 <script>
   import { api } from '../lib/api.js'
   import { fmtSpeed, fmtEta, shortPath } from '../lib/format.js'
+  import Skeleton from './Skeleton.svelte'
 
-  let { jobs = [], onChanged, notify } = $props()
+  let { jobs = [], loading = false, onChanged, notify } = $props()
 
   async function act(job, action) {
     try {
@@ -33,7 +34,38 @@
     Live progress arrives over SSE. Jobs survive a restart and resume from partial files.
   </p>
 
-  {#if jobs.length === 0}
+  {#if loading}
+    <table aria-busy="true">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th style="width:26%">Progress</th>
+          <th style="width:110px">Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each [0, 1, 2] as row (row)}
+          <tr class="skeleton-row">
+            <td>
+              <Skeleton width="62%" height="14px" />
+              <div style="height:7px"></div>
+              <Skeleton width="38%" height="11px" />
+            </td>
+            <td>
+              <Skeleton height="7px" radius="999px" />
+              <div style="height:8px"></div>
+              <Skeleton width="52%" height="11px" />
+            </td>
+            <td><Skeleton width="66px" height="20px" radius="999px" /></td>
+            <td>
+              <Skeleton width="56px" height="24px" radius="6px" style="margin-left:auto" />
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {:else if jobs.length === 0}
     <div class="empty">No jobs yet — paste a URL in the Download tab.</div>
   {:else}
     <table>

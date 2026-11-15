@@ -2,6 +2,7 @@
   import { api } from '../lib/api.js'
   import { fmtDuration } from '../lib/format.js'
   import { draft, persistDraft, presetFromDraft } from '../lib/draft.svelte.js'
+  import Skeleton from './Skeleton.svelte'
 
   let { notify, onQueued } = $props()
 
@@ -196,6 +197,21 @@
 
   {#if error}
     <div class="notice error">{error}</div>
+  {/if}
+
+  {#if probing && !info}
+    <div class="notice" aria-busy="true">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <Skeleton width="132px" height="74px" radius="8px" />
+        <div style="flex:1">
+          <Skeleton width="72%" height="15px" />
+          <div style="height:8px"></div>
+          <Skeleton width="46%" height="11px" />
+          <div style="height:6px"></div>
+          <Skeleton width="38%" height="11px" />
+        </div>
+      </div>
+    </div>
   {/if}
 
   {#if info}
