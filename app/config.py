@@ -22,8 +22,8 @@ class Settings(BaseSettings):
 
     app_token: str | None = None
 
-    host: str = "127.0.0.1"
-    port: int = 8080
+    app_host: str = "127.0.0.1"
+    app_port: int = 8080
     log_level: str = "info"
 
     data_dir: Path = Field(default_factory=_default_data_dir)

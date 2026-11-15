@@ -90,18 +90,44 @@ jobs:
           # answer without ffmpeg/deno being present on the runner.
           target: runtime
 
-      - name: Smoke-test the built image (amd64)
-        if: github.event_name == 'pull_request'
+      - name: Smoke-test the image
         run: |
-          docker run --rm -d --name ytdlweb-ci -p 8080:8080 \
-            -e APP_HOST=0.0.0.0 -e YTDLWEB_DATA_DIR=/tmp/data \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}"
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8080/api/health; then break; fi
+          set -euo pipefail
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            docker pull "$IMAGE"
+          fi
+
+          docker run --rm -d --name ytdlweb-ci -p 18080:8080 \
+            -e APP_HOST=0.0.0.0 -e YTDLWEB_DATA_DIR=/tmp/data "$IMAGE"
+
+          ok=0
+          for _ in $(seq 1 60); do
+            if ! docker inspect -f '{{.State.Running}}' ytdlweb-ci 2>/dev/null | grep -q true; then
+              echo "container exited before becoming healthy"
+              break
+            fi
+            if curl -fsS http://127.0.0.1:18080/api/health; then ok=1; break; fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:8080/api/system
-          docker rm -f ytdlweb-ci
+
+          if [ "$ok" != "1" ]; then
+            echo "::group::container logs"
+            docker logs ytdlweb-ci 2>&1 || true
+            echo "::endgroup::"
+            docker inspect -f '{{json .State}}' ytdlweb-ci 2>/dev/null || true
+            docker rm -f ytdlweb-ci >/dev/null 2>&1 || true
+            exit 1
+          fi
+
+          curl -fsS http://127.0.0.1:18080/api/system
+          docker rm -f ytdlweb-ci >/dev/null 2>&1 || true
+
+      - name: Verify the published manifest
+        if: github.event_name != 'pull_request'
+        run: |
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
 
       # Public repos: the package is private by default. Provide a PAT with
       # `write:packages` as the GHCR_PAT secret to flip it automatically; the

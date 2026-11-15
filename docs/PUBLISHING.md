@@ -104,8 +104,10 @@ Pin `:0.1.0` in production and bump deliberately; `:latest` moves.
   feedback fast.
 - **Cache:** `type=gha` for layers and buildx. First run is the slow one;
   afterwards only the `app/` layer rebuilds.
-- **PR builds** use `load: true` (no registry push) and then start the container
-  and curl `/api/health` and `/api/system`. A broken entrypoint fails the PR.
+- **PR builds** use `load: true` (no registry push). Every build is smoke-tested:
+  the container is started, `/api/health` is polled, `/api/system` is fetched,
+  and on failure the container logs are dumped into the job. On a branch/tag push
+  the published image is pulled back and tested the same way.
 - **Reproducibility:** the image installs yt-dlp from `pyproject.toml`; the
   build date is therefore meaningful. Refresh extractors at runtime with
   `ytdlweb update-extractors` if a site breaks before the next release.

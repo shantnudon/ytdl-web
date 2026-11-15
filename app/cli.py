@@ -120,8 +120,8 @@ def _serve(args: argparse.Namespace) -> int:
 
     cfg = _settings()
     cfg.ensure_dirs()
-    host = args.host or cfg.host
-    port = args.port or cfg.port
+    host = args.host or cfg.app_host
+    port = args.port or cfg.app_port
     print(f"ytdlweb {_version()} -> http://{host}:{port}")
     print(f"  downloads: {cfg.download_dir}")
     print(f"  library  : {cfg.library_dir}")
