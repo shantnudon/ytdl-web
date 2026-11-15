@@ -81,8 +81,10 @@ interrupted job resumes from the `.part` files yt-dlp left behind, because
    postprocessors (extract audio, embed metadata/thumbnail, subtitles,
    SponsorBlock), archive path, cookies, ffmpeg location, JS runtimes.
 3. `YoutubeDL.extract_info(url, download=True)` runs in a thread.
-4. Postprocessor hooks capture the final filepath (after the audio extraction
-   and `MoveFiles` pass), so the API reports the real output file.
+4. Postprocessor hooks only record `finished` events whose path is a media file
+   that exists on disk, and the last one wins. yt-dlp also emits the
+   pre-conversion source (`.webm`) on earlier events; storing that made finished
+   MP3 jobs point at a file that had already been deleted.
 5. The job row is finalised and an SSE frame is published.
 
 Presets are translated, never passed through: a client cannot inject arbitrary

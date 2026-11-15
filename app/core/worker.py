@@ -9,6 +9,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from .. import _ytdlp as ytdlp
@@ -24,6 +25,24 @@ log = logging.getLogger(__name__)
 PROGRESS_INTERVAL = 0.25  # seconds between SSE frames per job
 LOG_TAIL = 8000
 SKIP_STATUSES = {"running", "postprocessing", "done", "canceled"}
+
+# Postprocessor hooks fire for thumbnails, subtitles and info-json too; only
+# these extensions count as the downloaded media.
+MEDIA_EXTS = (
+    ".mp3",
+    ".m4a",
+    ".aac",
+    ".opus",
+    ".ogg",
+    ".flac",
+    ".wav",
+    ".mp4",
+    ".m4v",
+    ".mkv",
+    ".webm",
+    ".mov",
+    ".avi",
+)
 
 
 def _short(text: str, limit: int = 600) -> str:
@@ -63,6 +82,30 @@ def _collect_paths(info: Any) -> list[str]:
     return paths
 
 
+def existing_media(paths: Any) -> list[str]:
+    """Keep real, on-disk media files, preserving order and dropping duplicates.
+
+    yt-dlp reports the *pre-postprocessing* path on some hook events (a .webm
+    before FFmpegExtractAudio rewrites it to .mp3), and thumbnails/subtitles
+    arrive on the same channel. Feeding the first reported path back to the API
+    made finished audio jobs point at a file that no longer exists.
+    """
+    kept: list[str] = []
+    for path in paths or []:
+        if not path:
+            continue
+        try:
+            if Path(path).suffix.lower() not in MEDIA_EXTS:
+                continue
+            if not Path(path).is_file():
+                continue
+        except OSError:
+            continue
+        if path not in kept:
+            kept.append(path)
+    return kept
+
+
 class YtdlpLogger:
     """Routes yt-dlp's messages into the per-job log buffer."""
 
@@ -82,6 +125,33 @@ class YtdlpLogger:
 
     def error(self, msg: str) -> None:
         self._sink(f"ERROR: {msg}")
+
+
+def repair_outpaths(db: Database, download_dir: Path) -> int:
+    """Point finished jobs at the file that actually exists.
+
+    Jobs recorded before the postprocessor-path fix point at the deleted
+    .webm/.m4a source. Recover the sibling with a media extension when it is
+    still inside the download directory.
+    """
+    root = Path(download_dir).resolve()
+    fixed = 0
+    rows = db.query("SELECT id, outpath FROM jobs WHERE status = 'done' AND outpath IS NOT NULL")
+    for row in rows:
+        current = Path(row["outpath"])
+        if current.is_file():
+            continue
+        for ext in MEDIA_EXTS:
+            try:
+                candidate = current.with_suffix(ext).resolve()
+            except OSError:
+                continue
+            if root not in candidate.parents or not candidate.is_file():
+                continue
+            db.update_job(row["id"], outpath=str(candidate))
+            fixed += 1
+            break
+    return fixed
 
 
 class DownloadManager:
@@ -187,7 +257,7 @@ class DownloadManager:
                 progress=100.0,
                 speed=None,
                 eta=0,
-                outpath=paths[0] if paths else None,
+                outpath=paths[-1] if paths else None,
                 error=None,
                 finished_at=time.time(),
             )
@@ -222,8 +292,8 @@ class DownloadManager:
             with suppress(Exception):  # pragma: no cover
                 ydl.close()
 
-        paths = [path for path in collected if path]
-        return paths or _collect_paths(info)
+        paths = existing_media(collected) or existing_media(_collect_paths(info))
+        return paths
 
     def _progress_hook(self, job_id: str, cancel: threading.Event) -> Callable[[dict], None]:
         def hook(data: dict) -> None:
@@ -257,10 +327,15 @@ class DownloadManager:
 
     def _post_hook(self, collected: list[str]) -> Callable[[dict], None]:
         def hook(data: dict) -> None:
+            if data.get("status") != "finished":
+                return
             info = data.get("info_dict") or {}
             path = info.get("filepath") or info.get("_filename")
-            if path:
-                collected.append(path)
+            if not path or path in collected:
+                return
+            if Path(path).suffix.lower() not in MEDIA_EXTS:
+                return
+            collected.append(path)
 
         return hook
 

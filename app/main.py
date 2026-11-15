@@ -18,7 +18,7 @@ from .api import library as library_api
 from .api import prefs as prefs_api
 from .api import system as system_api
 from .config import Settings, get_settings
-from .core.worker import DownloadManager
+from .core.worker import DownloadManager, repair_outpaths
 from .db import Database
 from .events import Broker
 from .security import request_token, token_matches
@@ -66,6 +66,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         interrupted = db.mark_interrupted()
         if interrupted:
             log.warning("marked %s running job(s) as interrupted", interrupted)
+        repaired = repair_outpaths(db, cfg.download_dir)
+        if repaired:
+            log.info("repaired %s job output path(s)", repaired)
         await manager.start()
         try:
             yield
