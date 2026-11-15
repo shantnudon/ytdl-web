@@ -55,7 +55,7 @@ docker run -d \
   -v "$PWD/downloads:/downloads" \
   -v "$HOME/Music:/music" \
   -v "$PWD/config:/config" \
-  ghcr.io/OWNER/ytdlweb:latest
+  ghcr.io/your-user/ytdl-web:latest
 ```
 
 Or with compose:
@@ -66,6 +66,33 @@ docker compose up -d
 ```
 
 Open <http://localhost:8080>.
+
+### Building and publishing on GitHub
+
+The repo is set up so that pushing is all you do — GitHub Actions builds the
+image and publishes it to GHCR (no registry account, no local Docker, no
+secrets):
+
+```bash
+git remote add origin git@github.com:<you>/ytdl-web.git
+git push -u origin main
+```
+
+| Workflow | Trigger | Does |
+| --- | --- | --- |
+| `ci.yml` | push / PR | ruff, pytest on 3.11–3.13, SPA build |
+| `docker.yml` | push to `main`, tags, PR | multi-arch image → `ghcr.io/<you>/ytdl-web`; PRs build + smoke-test only |
+| `binaries.yml` | `v*` tags, manual | Nuitka onefile archives attached to the Release |
+
+First push yields `:edge`, `:latest` and `:sha-<commit>`. Make the package public
+once (Packages → Package settings → Change visibility → Public), or add a
+`GHCR_PAT` secret so the workflow does it. Release with:
+
+```bash
+git tag -a v0.1.0 -m "ytdlweb 0.1.0" && git push origin v0.1.0
+```
+
+Full details, tags, and troubleshooting: [docs/PUBLISHING.md](docs/PUBLISHING.md).
 
 ### From source
 
@@ -138,6 +165,7 @@ Read [docs/SECURITY.md](docs/SECURITY.md) before exposing the app to a network.
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | every env var, presets, ffmpeg/JS runtime resolution |
 | [docs/SECURITY.md](docs/SECURITY.md) | threat model, path jail, deployment checklist, licences |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | what shipped, what is next, what is out of scope |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | GitHub Actions → GHCR, tags, making the package public |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | dev setup and the ground rules |
 
 ---

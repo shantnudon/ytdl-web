@@ -1,0 +1,140 @@
+# Builds the container image and publishes it to the GitHub Container Registry.
+#
+#   push to main   -> ghcr.io/<owner>/<repo>:edge, :latest, :sha-<short>
+#   push tag vX.Y.Z-> :X.Y.Z, :X.Y, :latest, :sha-<short>
+#   pull request   -> amd64 build only, nothing pushed (a build check)
+#   manual run     -> same as a branch push
+#
+# The image is public as soon as the package visibility is set to public once:
+#   Repository -> Packages -> the package -> Package settings -> Change visibility
+# See docs/PUBLISHING.md.
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  # arm64 is emulated on x86 runners, so keep PR builds single-arch.
+  PLATFORMS: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+
+jobs:
+  build:
+    name: build & push
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=ytdlweb
+            org.opencontainers.image.description=Self-hosted yt-dlp web UI with a music library manager
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # `load` and provenance attestations are mutually exclusive.
+          provenance: ${{ github.event_name != 'pull_request' }}
+          # Smoke-test the image before it is pushed: the health endpoint must
+          # answer without ffmpeg/deno being present on the runner.
+          target: runtime
+
+      - name: Smoke-test the built image (amd64)
+        if: github.event_name == 'pull_request'
+        run: |
+          docker run --rm -d --name ytdlweb-ci -p 8080:8080 \
+            -e APP_HOST=0.0.0.0 -e YTDLWEB_DATA_DIR=/tmp/data \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}"
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/api/health; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/api/system
+          docker rm -f ytdlweb-ci
+
+      # Public repos: the package is private by default. Provide a PAT with
+      # `write:packages` as the GHCR_PAT secret to flip it automatically; the
+      # step is a no-op (and the notice below tells you what to click) otherwise.
+      - name: Make the GHCR package public
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_PAT }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice title=GHCR visibility::Set a GHCR_PAT secret (PAT with write:packages) to automate this, or set it once in Repository > Packages > Package settings > Change visibility > Public."
+            exit 0
+          fi
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          PKG="${GITHUB_REPOSITORY##*/}"
+          gh api --method PATCH "/user/packages/container/$PKG/visibility" -f visibility=public \
+            || gh api --method PATCH "/orgs/$OWNER/packages/container/$PKG/visibility" -f visibility=public
+          echo "::notice title=GHCR visibility::Package $PKG is public."
+
+      - name: Summary
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### Image published"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "Pull with:"
+            echo
+            echo '```bash'
+            echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

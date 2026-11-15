@@ -70,7 +70,7 @@ ytdlweb serve
 ```yaml
 services:
   ytdlweb:
-    image: ghcr.io/OWNER/ytdlweb:latest
+    image: ghcr.io/your-user/ytdl-web:latest
     environment:
       APP_TOKEN: "${APP_TOKEN:?set a long random token}"
       ALLOW_WRITE: "true"
