@@ -3,7 +3,7 @@
 
   let { onSuccess } = $props()
 
-  let token = $state('')
+  let password = $state('')
   let error = $state('')
   let busy = $state(false)
 
@@ -12,7 +12,7 @@
     busy = true
     error = ''
     try {
-      await api('/auth/login', { method: 'POST', body: { token } })
+      await api('/auth/login', { method: 'POST', body: { password } })
       onSuccess?.()
     } catch (problem) {
       error = problem.message
@@ -26,19 +26,20 @@
   <form class="login-card" onsubmit={submit}>
     <div class="brand" style="margin-bottom:6px">ytdl<span>web</span></div>
     <p class="muted small" style="margin-top:0">
-      This instance requires an access token. It is the value of <code>APP_TOKEN</code>.
+      This instance is password protected. Enter the password set with
+      <code>APP_PASSWORD</code>.
     </p>
 
     <label class="field">
-      <span>Access token</span>
-      <input type="password" bind:value={token} autocomplete="current-password" />
+      <span>Password</span>
+      <input type="password" bind:value={password} autocomplete="current-password" />
     </label>
 
     {#if error}
       <div class="notice error">{error}</div>
     {/if}
 
-    <button class="primary" style="width:100%;margin-top:14px" disabled={busy || !token}>
+    <button class="primary" style="width:100%;margin-top:14px" disabled={busy || !password}>
       {busy ? 'Checking…' : 'Unlock'}
     </button>
   </form>

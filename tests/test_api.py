@@ -79,7 +79,7 @@ def token_app(tmp_path):
         library_dir=tmp_path / "library",
         config_dir=tmp_path / "config",
         static_dir=tmp_path / "static",
-        app_token="s3cret",
+        app_password="s3cret",
     ).normalize()
     cfg.ensure_dirs()
     return create_app(cfg)
@@ -93,12 +93,12 @@ async def test_auth_flow(token_app):
         assert (await client.get("/api/jobs")).status_code == 401
         assert (await client.get("/api/health")).status_code == 200
 
-        bad = await client.post("/api/auth/login", json={"token": "wrong"})
+        bad = await client.post("/api/auth/login", json={"password": "wrong"})
         assert bad.status_code == 401
 
-        good = await client.post("/api/auth/login", json={"token": "s3cret"})
+        good = await client.post("/api/auth/login", json={"password": "s3cret"})
         assert good.status_code == 200
-        assert client.cookies.get("ytdlweb_token") == "s3cret"
+        assert client.cookies.get("ytdlweb_session") == "s3cret"
 
         assert (await client.get("/api/jobs")).status_code == 200
 

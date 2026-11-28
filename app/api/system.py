@@ -29,7 +29,7 @@ def system(settings: SettingsDep, db: Db, manager: Manager) -> dict[str, Any]:
         "ffmpeg_ok": resolve_ffmpeg() is not None,
         "js_runtime": describe_js(),
         "allow_write": settings.allow_write,
-        "auth_required": bool(settings.app_token),
+        "auth_required": bool(settings.app_password),
         "max_concurrent": settings.max_concurrent,
         "running": manager.running_count(),
         "tracks": db.count_tracks(),

@@ -21,7 +21,7 @@ from .config import Settings, get_settings
 from .core.worker import DownloadManager, repair_outpaths
 from .db import Database
 from .events import Broker
-from .security import request_token, token_matches
+from .security import credential_matches, request_credential
 
 log = logging.getLogger(__name__)
 
@@ -98,11 +98,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def auth_guard(request: Request, call_next):
-        token = cfg.app_token
-        if token:
+        password = cfg.app_password
+        if password:
             path = request.url.path
             if path.startswith("/api/") and path not in PUBLIC_API:
-                if not token_matches(request_token(request), token):
+                if not credential_matches(request_credential(request), password):
                     return JSONResponse({"detail": "authentication required"}, status_code=401)
                 needs_csrf = request.method not in ("GET", "HEAD", "OPTIONS")
                 if needs_csrf and request.headers.get("x-requested-with") != "ytdlweb":

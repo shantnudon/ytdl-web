@@ -32,11 +32,30 @@ def test_documented_paths_resolve(monkeypatch, tmp_path: Path):
 
 
 def test_defaults_are_localhost_only(monkeypatch, tmp_path: Path):
-    for name in ("APP_HOST", "APP_PORT", "ALLOW_WRITE", "APP_TOKEN"):
+    for name in ("APP_HOST", "APP_PORT", "ALLOW_WRITE", "APP_PASSWORD", "APP_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("YTDLWEB_DATA_DIR", str(tmp_path))
     settings = Settings().normalize()
     assert settings.app_host == "127.0.0.1"
     assert settings.app_port == 8080
     assert settings.allow_write is False
+    assert settings.app_password is None
+
+
+def test_password_comes_from_env(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("APP_PASSWORD", "hunter2")
+    monkeypatch.delenv("APP_TOKEN", raising=False)
+    monkeypatch.setenv("YTDLWEB_DATA_DIR", str(tmp_path))
+    settings = Settings().normalize()
+    assert settings.app_password == "hunter2"
+    assert settings.app_token is None
+
+
+def test_legacy_app_token_is_folded_into_password(monkeypatch, tmp_path: Path):
+    """Upgrades must not silently disable auth when only APP_TOKEN is set."""
+    monkeypatch.delenv("APP_PASSWORD", raising=False)
+    monkeypatch.setenv("APP_TOKEN", "legacy-secret")
+    monkeypatch.setenv("YTDLWEB_DATA_DIR", str(tmp_path))
+    settings = Settings().normalize()
+    assert settings.app_password == "legacy-secret"
     assert settings.app_token is None

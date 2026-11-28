@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+log = logging.getLogger(__name__)
 
 
 def _default_data_dir() -> Path:
@@ -20,6 +23,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
+    app_password: str | None = None
+    # Deprecated: the setting used to be called APP_TOKEN. It is folded into
+    # app_password so upgrading never silently disables the password.
     app_token: str | None = None
 
     app_host: str = "127.0.0.1"
@@ -48,8 +54,10 @@ class Settings(BaseSettings):
         self.static_dir = resolve(self.static_dir or Path(__file__).parent / "static")
         if self.cookies_file is not None:
             self.cookies_file = resolve(self.cookies_file)
-        if not self.app_token:
-            self.app_token = None
+        if not self.app_password and self.app_token:
+            log.warning("APP_TOKEN is deprecated; rename it to APP_PASSWORD")
+            self.app_password = self.app_token
+        self.app_token = None
         return self
 
     def ensure_dirs(self) -> None:

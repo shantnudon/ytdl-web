@@ -8,7 +8,7 @@ boundaries. This document describes the model, not a guarantee.
 | Setting | Default | Why |
 | --- | --- | --- |
 | `APP_HOST` | `127.0.0.1` | Not reachable from the network until you say so. |
-| `APP_TOKEN` | unset | Single-user localhost tool; set it before exposing a port. |
+| `APP_PASSWORD` | unset | Single-user localhost tool; set it before exposing a port. |
 | `ALLOW_WRITE` | `false` | The library API is read-only until enabled. |
 | Docker user | `PUID:PGID` (1000) | Never runs as root inside the container. |
 
@@ -25,7 +25,7 @@ The interesting attacker is someone who can send HTTP requests to the app.
 | SSRF via the URL field | Only `http(s)` URLs; the value is handed to yt-dlp, never fetched by our own HTTP client |
 | Stored XSS via tags/filenames | Svelte escapes by default; CSP forbids inline script |
 | CSRF | `SameSite=Strict` cookie **and** a required `X-Requested-With: ytdlweb` header on mutations |
-| Brute force on the token | In-process rate limit on `/api/auth/login` (8 per 5 min) |
+| Brute force on the password | In-process rate limit on `/api/auth/login` (8 per 5 min) |
 | Frame/clickjacking | `X-Frame-Options: DENY` + `frame-ancestors` via CSP |
 | Slow-client memory growth | SSE queues are bounded; frames are dropped, never buffered forever |
 
@@ -70,7 +70,7 @@ A crash or full disk can leave a `.tmp` file, never a truncated MP3.
 
 Checklist before you expose the port:
 
-- [ ] `APP_TOKEN` set to a long random value (`openssl rand -hex 32`)
+- [ ] `APP_PASSWORD` set to a long random value (`openssl rand -hex 32`)
 - [ ] TLS terminated by a reverse proxy; app bound to `127.0.0.1` or a private
       container network
 - [ ] `ALLOW_WRITE` only if you actually edit files through the UI
@@ -81,9 +81,9 @@ Checklist before you expose the port:
 
 ## Known limitations
 
-- Single shared token, no per-user accounts, no audit trail of who did what.
-- The login token is stored in an HttpOnly cookie; there is no session expiry
-  beyond 30 days and no server-side revocation (rotate `APP_TOKEN`).
+- One shared password, no per-user accounts, no audit trail of who did what.
+- The password itself is stored in an HttpOnly session cookie; there is no expiry
+  beyond 30 days and no server-side revocation (rotate `APP_PASSWORD`).
 - The rate limiter is in-process and resets on restart; it is not a WAF.
 - yt-dlp fetches the URL you give it. Treat the URL field as "the server will
   contact this host".

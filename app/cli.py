@@ -101,7 +101,7 @@ def doctor() -> dict:
             "config": _writable(cfg.config_dir),
         },
         "allow_write": cfg.allow_write,
-        "auth_required": bool(cfg.app_token),
+        "auth_required": bool(cfg.app_password),
     }
 
 

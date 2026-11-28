@@ -86,7 +86,7 @@ and checksums.
 
 ```bash
 docker run -d --name ytdlweb -p 8080:8080 \
-  -e APP_TOKEN="$(openssl rand -hex 32)" \
+  -e APP_PASSWORD="$(openssl rand -hex 32)" \
   -e ALLOW_WRITE=true \
   -e PUID="$(id -u)" -e PGID="$(id -g)" \
   -v "$PWD/config:/config" \

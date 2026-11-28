@@ -1,25 +1,27 @@
 from __future__ import annotations
 
+import hmac
 import threading
 import time
 from collections import defaultdict, deque
 
 from starlette.requests import Request
 
+COOKIE_NAME = "ytdlweb_session"
 
-def token_matches(candidate: str | None, expected: str | None) -> bool:
+
+def credential_matches(candidate: str | None, expected: str | None) -> bool:
     if not candidate or not expected:
         return False
-    import hmac
-
     return hmac.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
 
 
-def request_token(request: Request) -> str | None:
+def request_credential(request: Request) -> str | None:
+    """Password from an `Authorization: Bearer` header or the session cookie."""
     header = request.headers.get("authorization")
     if header and header.lower().startswith("bearer "):
         return header[7:].strip()
-    return request.cookies.get("ytdlweb_token")
+    return request.cookies.get(COOKIE_NAME)
 
 
 class RateLimiter:

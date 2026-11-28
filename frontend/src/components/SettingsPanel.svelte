@@ -218,7 +218,7 @@
         <div class="mono">{system.plugin_override ? 'active (override)' : 'bundled'}</div>
       </div>
       <div><div class="muted small">Library writes</div><div class="mono">{system.allow_write ? 'enabled' : 'disabled'}</div></div>
-      <div><div class="muted small">Auth</div><div class="mono">{system.auth_required ? 'token required' : 'open (localhost)'}</div></div>
+      <div><div class="muted small">Password</div><div class="mono">{system.auth_required ? 'required' : 'not set (open on localhost)'}</div></div>
     </div>
   {:else}
     <div class="grid-2" aria-busy="true">

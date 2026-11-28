@@ -21,7 +21,7 @@ def settings(tmp_path: Path) -> Settings:
         library_dir=tmp_path / "library",
         config_dir=tmp_path / "config",
         static_dir=tmp_path / "static",
-        app_token=None,
+        app_password=None,
         allow_write=True,
         max_concurrent=1,
     ).normalize()

@@ -8,7 +8,7 @@ read-only instance under `~/.local/share/ytdlweb`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `APP_TOKEN` | _empty_ | When set, all `/api` routes except auth/health require it. Accepts `Authorization: Bearer <token>` or the cookie set by the login screen. |
+| `APP_PASSWORD` | _empty_ | When set, the login screen asks for it and all `/api` routes except auth/health require it. Also accepts `Authorization: Bearer <password>` for scripts. |
 | `APP_HOST` | `127.0.0.1` | Bind address. `0.0.0.0` in Docker (the container is the boundary). |
 | `APP_PORT` | `8080` | HTTP port. |
 | `LOG_LEVEL` | `info` | uvicorn log level. |
@@ -72,7 +72,7 @@ services:
   ytdlweb:
     image: ghcr.io/your-user/ytdl-web:latest
     environment:
-      APP_TOKEN: "${APP_TOKEN:?set a long random token}"
+      APP_PASSWORD: "${APP_PASSWORD:?set a long random password}"
       ALLOW_WRITE: "true"
       PUID: "1000"
       PGID: "1000"
@@ -96,7 +96,7 @@ After=network-online.target
 [Service]
 User=media
 WorkingDirectory=/home/media/ytdl-web
-Environment=APP_TOKEN=change-me
+Environment=APP_PASSWORD=change-me
 Environment=ALLOW_WRITE=true
 Environment=LIBRARY_DIR=/srv/media/Music
 ExecStart=/home/media/ytdl-web/.venv/bin/ytdlweb serve

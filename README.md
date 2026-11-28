@@ -52,7 +52,7 @@ image, a Python package, or a single-file binary.
 docker run -d \
   --name ytdlweb \
   -p 8080:8080 \
-  -e APP_TOKEN=change-me \
+  -e APP_PASSWORD=change-me \
   -e ALLOW_WRITE=true \
   -e PUID=1000 -e PGID=1000 \
   -v "$PWD/downloads:/downloads" \
@@ -122,7 +122,7 @@ required.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `APP_TOKEN` | _empty_ | Enables auth. All `/api` routes then need this token. |
+| `APP_PASSWORD` | _empty_ | When set, the UI asks for this password and all `/api` routes require it. |
 | `APP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` inside Docker. |
 | `APP_PORT` | `8080` | HTTP port. |
 | `YTDLWEB_DATA_DIR` | `~/.local/share/ytdlweb` | Base directory for state. |
